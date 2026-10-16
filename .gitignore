@@ -7,7 +7,7 @@
 jt-helper
 
 # zip bomb maker i didn't finish and i don't want to distribute stuff like this anyway
-zipbomb.hpp
+os/zipbomb.hpp
 
 # file not made by me, find at https://github.com/nlohmann/json
 json.hpp
