@@ -2,7 +2,7 @@
 #include <string>
 #include <limits>
 
-namespace input {
+namespace albert::input {
 
 inline int getUserInput(int min = 0, int max = std::numeric_limits<int>::max()) {
     while (true) {

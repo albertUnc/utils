@@ -6,7 +6,7 @@
 using std::string;
 namespace chrono = std::chrono;
 
-namespace csttime
+namespace albert::time
 {
 
 inline long long getNowSeconds() {

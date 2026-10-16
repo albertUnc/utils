@@ -7,6 +7,8 @@
 #include <vector>
 namespace fs = std::filesystem;
 
+namespace albert {
+
 enum class MessageType {
     Info,
     Warn,
@@ -48,7 +50,7 @@ class Log {
     void write(const std::string &message, const MessageType &type = MessageType::Info) {
         file << std::format(
             "{} {} {} {}",
-            csttime::currentMinute(),
+            albert::time::currentMinute(),
             signatures.empty() ? DEFAULT_SIG : signatures.at(current()),
             mttos(type),
             message
@@ -62,3 +64,5 @@ class Log {
     }
 
 };
+
+} // namespace albert

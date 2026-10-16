@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <iostream>
-namespace clear
+namespace albert::clear
 {
     inline void clearScreen() {
         #ifdef _WIN32

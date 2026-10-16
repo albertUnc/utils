@@ -3,7 +3,7 @@
 #include <cstdlib>
 namespace fs = std::filesystem;
 
-namespace platform
+namespace albert::platform
 {
 
 inline std::string APP_NAME = "MyApp";
