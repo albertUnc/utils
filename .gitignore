@@ -1,0 +1,10 @@
+.clangd
+.cache/
+*.env
+.env
+
+# This is for a private project and not done nayway
+jt-helper
+
+# zip bomb maker i didn't finish and i don't want to distribute stuff like this anyway
+zipbomb.hpp

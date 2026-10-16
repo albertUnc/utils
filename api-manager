@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+
+# api_manager.py
+
+import base64
+import getpass
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from platformdirs import user_data_dir
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import termios
+    import tty
+
+APP_NAME = "API-manager"
+SAVE_FILE_NAME = "vault.json"
+SALT_SIZE = 16
+SCRYPT_N = 2 ** 14
+SCRYPT_R = 8
+SCRYPT_P = 1
+CLIPBOARD_CLEAR_SECONDS = 30
+
+# Child process that waits, then clears the clipboard only if it still holds our key.
+# The key is passed via stdin, never on the command line.
+CLIPBOARD_CLEARER = """
+import json, subprocess, sys, time
+paste_cmd, clear_cmd = json.loads(sys.argv[1])
+seconds = int(sys.argv[2])
+expected = sys.stdin.read()
+time.sleep(seconds)
+try:
+    current = subprocess.run(paste_cmd, capture_output=True, text=True, check=True).stdout
+    if current.rstrip("\\r\\n") == expected.rstrip("\\r\\n"):
+        subprocess.run(clear_cmd, input="", stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, text=True, check=True)
+except Exception:
+    pass
+"""
+
+
+def masked_input(prompt):
+    """Read a line from the terminal, echoing '*' for each character."""
+    print(prompt, end="", flush=True)
+    chars = []
+
+    if os.name == "nt":
+        while True:
+            ch = msvcrt.getwch()
+            if ch in ("\r", "\n"):
+                break
+            if ch == "\x03":
+                print()
+                raise KeyboardInterrupt
+            if ch in ("\x00", "\xe0"):  # Arrow and function keys send two codes
+                msvcrt.getwch()
+                continue
+            if ch == "\x08":  # Backspace
+                if chars:
+                    chars.pop()
+                    sys.stdout.write("\b \b")
+            elif ch.isprintable():
+                chars.append(ch)
+                sys.stdout.write("*")
+            sys.stdout.flush()
+        print()
+        return "".join(chars)
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch in ("\r", "\n"):
+                break
+            if ch == "\x03":  # Ctrl+C
+                raise KeyboardInterrupt
+            if ch == "\x04" and not chars:  # Ctrl+D on empty input
+                raise EOFError
+            if ch in ("\x7f", "\x08"):  # Backspace
+                if chars:
+                    chars.pop()
+                    sys.stdout.write("\b \b")
+            elif ch.isprintable():
+                chars.append(ch)
+                sys.stdout.write("*")
+            sys.stdout.flush()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        print()
+    return "".join(chars)
+
+
+def get_save_path():
+    return os.path.join(user_data_dir(APP_NAME, appauthor=False), SAVE_FILE_NAME)
+
+
+def derive_fernet(password, salt, n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P):
+    kdf = Scrypt(salt=salt, length=32, n=n, r=r, p=p)
+    key = kdf.derive(password.encode())
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def write_file_atomically(path, data):
+    directory = os.path.dirname(path)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(dir=directory, prefix=".vault.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    except BaseException:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        raise
+
+
+class Vault:
+    def __init__(self, entries, fernet, salt, kdf_params):
+        self.entries = entries
+        self.fernet = fernet
+        self.salt = salt
+        self.kdf_params = kdf_params
+
+    def save(self):
+        token = self.fernet.encrypt(json.dumps(self.entries).encode()).decode()
+        write_file_atomically(get_save_path(), {
+            "version": 2,
+            "kdf": {"salt": self.salt.hex(), "n": self.kdf_params[0],
+                    "r": self.kdf_params[1], "p": self.kdf_params[2]},
+            "data": token,
+        })
+
+
+def create_vault():
+    print("Welcome to API Manager. You are creating a new vault.")
+    while True:
+        password = masked_input("Enter master password: ")
+        confirm = masked_input("Confirm master password: ")
+        if password and password == confirm:
+            break
+        print("Passwords must be non-empty and match. Please try again.")
+
+    salt = os.urandom(SALT_SIZE)
+    params = (SCRYPT_N, SCRYPT_R, SCRYPT_P)
+    vault = Vault({}, derive_fernet(password, salt), salt, params)
+    vault.save()
+    print("Vault created successfully.")
+    return vault
+
+
+def load_vault():
+    path = get_save_path()
+    if not os.path.exists(path):
+        return create_vault()
+
+    with open(path, "r") as f:
+        file_data = json.load(f)
+
+    kdf = file_data["kdf"]
+    salt = bytes.fromhex(kdf["salt"])
+    params = (kdf["n"], kdf["r"], kdf["p"])
+
+    for _ in range(3):
+        password = masked_input("Enter master password: ")
+        fernet = derive_fernet(password, salt, *params)
+        try:
+            entries = json.loads(fernet.decrypt(file_data["data"].encode()).decode())
+            return Vault(entries, fernet, salt, params)
+        except InvalidToken:
+            print("Incorrect password.")
+
+    print("Too many failed attempts. Exiting.")
+    sys.exit(1)
+
+
+def choose_entry(vault, prompt):
+    names = sorted(vault.entries)
+    if not names:
+        print("The vault is empty.")
+        return None
+    for i, name in enumerate(names, 1):
+        print(f"{i}. {name}")
+    choice = input(prompt).strip()
+    if not choice.isdigit() or not 1 <= int(choice) <= len(names):
+        print("Invalid selection.")
+        return None
+    return names[int(choice) - 1]
+
+
+def add_api_key(vault):
+    name = input("Enter API key name: ").strip()
+    if not name:
+        print("Name cannot be empty.")
+        return
+    if name in vault.entries:
+        if input(f"'{name}' already exists. Overwrite? (y/n): ").strip().lower() != "y":
+            return
+    api_key = masked_input("Enter API key: ")
+    if not api_key:
+        print("Key cannot be empty.")
+        return
+    vault.entries[name] = api_key
+    vault.save()
+    print(f"'{name}' saved.")
+
+
+def delete_api_key(vault):
+    name = choose_entry(vault, "Enter number to delete: ")
+    if name is None:
+        return
+    if input(f"Delete '{name}'? (y/n): ").strip().lower() != "y":
+        return
+    del vault.entries[name]
+    vault.save()
+    print(f"'{name}' deleted.")
+
+
+def clipboard_commands():
+    """Return (copy_cmd, paste_cmd, clear_cmd) for the current platform."""
+    if os.name == "nt":
+        ps = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
+        return (["clip"],
+                ps + ["Get-Clipboard -Raw"],
+                ps + ["Set-Clipboard -Value ' '"])
+
+    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        if shutil.which("wl-copy") and shutil.which("wl-paste"):
+            return (["wl-copy"],
+                    ["wl-paste", "--no-newline"],
+                    ["wl-copy", "--clear"])
+
+    if shutil.which("xclip"):
+        return (["xclip", "-selection", "clipboard"],
+                ["xclip", "-selection", "clipboard", "-o"],
+                ["xclip", "-selection", "clipboard"])  # empty input clears
+
+    raise RuntimeError("Install wl-clipboard (Wayland) or xclip (X11) to use the clipboard.")
+
+
+def copy_api_key(vault):
+    name = choose_entry(vault, "Enter number to copy: ")
+    if name is None:
+        return
+    api_key = vault.entries[name]
+
+    try:
+        copy_cmd, paste_cmd, clear_cmd = clipboard_commands()
+        # Clipboard tools may fork into the background, so don't capture their output.
+        subprocess.run(copy_cmd, input=api_key, text=True, check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (RuntimeError, subprocess.CalledProcessError, OSError) as error:
+        print(f"Failed to copy: {error}")
+        return
+
+    detach = {}
+    if os.name == "nt":
+        detach["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0)
+                                   | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+    else:
+        detach["start_new_session"] = True
+
+    clearer = subprocess.Popen(
+        [sys.executable, "-c", CLIPBOARD_CLEARER,
+         json.dumps([paste_cmd, clear_cmd]), str(CLIPBOARD_CLEAR_SECONDS)],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        text=True, **detach,
+    )
+    clearer.stdin.write(api_key)
+    clearer.stdin.close()
+
+    print(f"Copied '{name}'. The clipboard will clear in {CLIPBOARD_CLEAR_SECONDS}s "
+          "if it still contains this key.")
+
+
+def main():
+    try:
+        vault = load_vault()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+    except Exception as error:
+        print(f"Error loading vault: {error}")
+        return
+
+    actions = {"1": add_api_key, "2": delete_api_key, "3": copy_api_key}
+    try:
+        while True:
+            print("\n1. Add API key")
+            print("2. Delete API key")
+            print("3. Copy API key")
+            print("4. Quit")
+            choice = input("Choose from the options above: ").strip()
+            if choice == "4":
+                break
+            action = actions.get(choice)
+            if action is None:
+                print("Invalid input. Please try again.")
+            else:
+                action(vault)
+    except (KeyboardInterrupt, EOFError):
+        print()
+
+
+if __name__ == "__main__":
+    main()
