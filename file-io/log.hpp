@@ -2,7 +2,7 @@
 #include <string>
 #include <format>
 #include <filesystem>
-#include <utils/time.hpp>
+#include "../os/time.hpp"
 #include <utility>
 #include <vector>
 namespace fs = std::filesystem;
@@ -56,7 +56,7 @@ class Log {
     }
     void setStream(std::ofstream str) { file = std::move(str); }
     bool loadStream(fs::path p, bool clear) {
-        if (!fs::exists(p)) return false;
+        if (!fs::exists(p.parent_path())) return false;
         file.open(p, (clear ? std::ios::trunc : std::ios::app));
         return file.is_open();
     }
