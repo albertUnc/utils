@@ -9,15 +9,17 @@ namespace fs = std::filesystem;
 
 namespace albert {
 
-enum class MessageType {
-    Info,
-    Warn,
-    Error,
-    Fatal
-};
-
 
 class Log {
+    public:
+
+    enum class MessageType {
+        Info,
+        Warn,
+        Error,
+        Fatal
+    };
+
     private:
     std::ofstream file;
     std::vector<std::string> signatures;
@@ -62,7 +64,6 @@ class Log {
         file.open(p, (clear ? std::ios::trunc : std::ios::app));
         return file.is_open();
     }
-
 };
 
 } // namespace albert
