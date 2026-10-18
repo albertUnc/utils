@@ -31,6 +31,12 @@ All tools and their docs are found in folders relative to this readme. Here's a 
 
 [Full logging to file system](file-io/log.hpp)
 
+## [String tools](string/)
+
+[Documentation](string/string-utils-docs.md)
+
+[String utilities/helpers from python](string/string-utils.hpp)
+
 ## Random other tools
 
 [Save&encrypt your api keys, access them copying](api-manager)
