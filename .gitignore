@@ -2,6 +2,7 @@
 .cache/
 *.env
 .env
+__pycache__/
 
 # This is for a private project and not done nayway
 jt-helper
