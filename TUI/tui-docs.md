@@ -1,12 +1,14 @@
 # Utils/TUI
 
 ## clear.hpp
-- Requires: C++98 or newer
+- Requires: C++17 or newer (it uses `inline` variables)
 - It can clear the screen of a terminal app (like the `clear` command)
 - It can wait for user input before continuing (like pressing enter to continue)
 
 ### How to clear the terminal
-Use `clear::clearScreen();`. That's it, it will execute the clear immediately. This works by checking the OS and sending a clear or cls command that clears the terminal. It doesn't actually clear the screen as the name would suggest, only the text in the terminal (so new text appears at the top, unlike if we just sent 100 newlines to 'clear it')
+Use `clear::clearScreen();`. That's it, it will execute the clear immediately. This works by printing an ANSI escape code (`\033[2J\033[3J\033[H`) straight to the terminal, which clears the visible text, the scrollback, and moves the cursor back to the top left. It doesn't actually clear the screen as the name would suggest, only the text in the terminal (so new text appears at the top, unlike if we just sent 100 newlines to 'clear it')
+
+It used to call `system("clear")` / `system("cls")`, which spawned a whole shell process every time. Now it's just a string written to stdout, so it's way faster and works the same on every OS. On Windows, the first call also turns on ANSI (virtual terminal) support for the console, which needs Windows 10 or newer. After that it's the exact same code as on Linux/macOS.
 
 ### Waiting for user input to continue
 The default way is `clear::hold();`, if this is called with no arguments, it's gonna use the HOLD_PROMPT variable as a prompt. To change that, you can overwrite it with `clear::HOLD_PROMPT = "";` or with `clear::changeHoldPrompt("");`. The default prompt it will set this to is "Press ENTER to continue\n".

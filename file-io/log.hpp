@@ -1,69 +1,72 @@
+#include "../os/time.hpp"
+
+#include <filesystem>
+#include <format>
 #include <fstream>
 #include <string>
-#include <format>
-#include <filesystem>
-#include "../os/time.hpp"
 #include <utility>
 #include <vector>
 namespace fs = std::filesystem;
 
-namespace albert {
+namespace albert
+{
 
-
-class Log {
+    class Log {
     public:
-
-    enum class MessageType {
-        Info,
-        Warn,
-        Error,
-        Fatal
-    };
+        enum class MessageType {
+            Info,
+            Warn,
+            Error,
+            Fatal
+        };
 
     private:
-    std::ofstream file;
-    std::vector<std::string> signatures;
+        std::ofstream file;
+        std::vector<std::string> signatures;
 
-    const inline std::string mttos(const MessageType &input) {
-        switch(input) {
-            case MessageType::Info: return "[INFO]";
-            case MessageType::Warn: return "[WARN]";
-            case MessageType::Error: return "[ERROR]";
-            case MessageType::Fatal: return "[FATAL]";
+        const inline std::string mttos(const MessageType &input) {
+            switch (input) {
+                case MessageType::Info:
+                    return "[INFO]";
+                case MessageType::Warn:
+                    return "[WARN]";
+                case MessageType::Error:
+                    return "[ERROR]";
+                case MessageType::Fatal:
+                    return "[FATAL]";
+            }
         }
-    }
-    int current() {return signatures.size() - 1; }
-    const std::string DEFAULT_SIG = "UNKNOWN";
+        int current() { return signatures.size() - 1; }
+        const std::string DEFAULT_SIG = "UNKNOWN";
 
     public:
-
-    class SignatureScope {
+        class SignatureScope {
         private:
-        Log &log;
+            Log &log;
 
         public:
-        SignatureScope(Log &owner, std::string signature) : log(owner) {
-            log.signatures.push_back(std::move(signature));
+            SignatureScope(Log &owner, std::string signature)
+                : log(owner) {
+                log.signatures.push_back(std::move(signature));
+            }
+
+            ~SignatureScope() { log.signatures.pop_back(); }
+        };
+
+        void write(const std::string &message, const MessageType &type = MessageType::Info) {
+            file << std::format(
+                "{} {} {} {}",
+                albert::time::currentMinute(),
+                signatures.empty() ? DEFAULT_SIG : signatures.at(current()),
+                mttos(type),
+                message);
         }
-
-        ~SignatureScope() { log.signatures.pop_back(); }
+        void setStream(std::ofstream str) { file = std::move(str); }
+        bool loadStream(fs::path p, bool clear) {
+            if (!fs::exists(p.parent_path())) return false;
+            file.open(p, (clear ? std::ios::trunc : std::ios::app));
+            return file.is_open();
+        }
     };
-
-    void write(const std::string &message, const MessageType &type = MessageType::Info) {
-        file << std::format(
-            "{} {} {} {}",
-            albert::time::currentMinute(),
-            signatures.empty() ? DEFAULT_SIG : signatures.at(current()),
-            mttos(type),
-            message
-        );
-    }
-    void setStream(std::ofstream str) { file = std::move(str); }
-    bool loadStream(fs::path p, bool clear) {
-        if (!fs::exists(p.parent_path())) return false;
-        file.open(p, (clear ? std::ios::trunc : std::ios::app));
-        return file.is_open();
-    }
-};
 
 } // namespace albert
