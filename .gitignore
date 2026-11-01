@@ -12,3 +12,6 @@ os/zipbomb.hpp
 
 # file not made by me, find at https://github.com/nlohmann/json
 json.hpp
+
+# compiled binary of middle_calc.cpp, build from source
+middle_calc

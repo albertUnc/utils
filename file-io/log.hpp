@@ -1,3 +1,5 @@
+#pragma once
+
 #include "../os/time.hpp"
 
 #include <filesystem>

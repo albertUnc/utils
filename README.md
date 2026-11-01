@@ -37,6 +37,18 @@ All tools and their docs are found in folders relative to this readme. Here's a 
 
 [String utilities/helpers from python](string/string-utils.hpp)
 
+## [Command line tools](cli/)
+
+[Documentation](cli/cli-docs.md)
+
+[Command line argument parser](cli/args.hpp)
+
+## [List tools](list/)
+
+[Documentation](list/list-utils-docs.md)
+
+[List/vector helpers](list/list_utils.hpp)
+
 ## Random other tools
 
 [Save&encrypt your api keys, access them copying](api-manager)
