@@ -53,4 +53,4 @@ All tools and their docs are found in folders relative to this readme. Here's a 
 
 [Save&encrypt your api keys, access them copying](api-manager)
 
-[Based of window width and an object width get where you have to place the object for it to be in the middle](middle_calc) and [souce code to it](middle_calc.cpp) and the [gcc compile args for it](compile_flags.txt)
+[Based of window width and an object width get where you have to place the object for it to be in the middle](middle_calc.cpp) (source code only, compile it yourself with the [gcc compile args for it](compile_flags.txt))
